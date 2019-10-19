@@ -191,10 +191,25 @@ scrape_company <- function(url, name, id){
   res
 }
 
+# CHANGE THIS
+output_folder <- "C:\\Users\\klahrichi\\Documents\\scraped"
+
+
+# Main function call
+# Note: This will created a series of .rds files in the output folder
 scrape_listing_recurrent(start_url, 
                          max_pages = 1,
-                         output_folder = "C:\\Users\\klahrichi\\Documents\\scraped")
+                         output_folder = output_folder)
 
-# df <- readRDS("C:\\Users\\klahrichi\\Documents\\scraped\\res_000001.rds")
-# 
-# write.csv(df, "C:\\Users\\klahrichi\\Documents\\scraped\\res_000001.csv")
+# This will read all the .RDS files and append them in one dataframe
+files <- list.files(output_folder, pattern = ".rds")
+
+data <- 
+  files %>% 
+  map(readRDS) %>% 
+  bind_rows()
+
+# This will save all the data in one CSV
+data %>% write_csv(glue("{output_folder}\\final_data.csv"))
+
+
