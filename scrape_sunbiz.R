@@ -10,8 +10,6 @@ root <- "http://search.sunbiz.org"
 
 session <- html_session(root)
 
-start_url <- "/Inquiry/CorporationSearch/SearchResults?inquiryType=EntityName&searchNameOrder=A&searchTerm=A"
-
 
 #' This is the main function. It will start at the provided url, and keep going to the next page until none
 #' is found.
@@ -19,16 +17,21 @@ start_url <- "/Inquiry/CorporationSearch/SearchResults?inquiryType=EntityName&se
 #' @param url The start URL
 #' @param verbose Should we print where we are as the scraping happens ?
 #' @param max_pages The maximum number of pages to scrape
-scrape_listing_recurrent <- function(url, verbose=TRUE, max_pages=Inf, output_folder='.'){
+scrape_listing_recurrent <- function(url, 
+                                     verbose = TRUE, 
+                                     max_pages = Inf, 
+                                     output_folder = '.',
+                                     start_counter = 1){
   
   keep_going <- TRUE
   
-  i <- 1
+  i <- start_counter
   
   while(keep_going){
     
     if(verbose){
-      print(glue("Scraping page {i} - URL: {url}"))
+      print(glue("Scraping page {i}"))
+      print(glue("URL: {url}"))
     }
     
     html <- session %>% jump_to(url)
@@ -192,14 +195,22 @@ scrape_company <- function(url, name, id){
 }
 
 # CHANGE THIS
-output_folder <- "C:\\Users\\klahrichi\\Documents\\scraped"
+output_folder <- "C:\\Users\\HP\\Documents\\scrape_sunbiz"
+
+# If you are starting from scratch, use this start_url and start_counter
+# start_url <- "/Inquiry/CorporationSearch/SearchResults?inquiryType=EntityName&searchNameOrder=A&searchTerm=0"
+# start_counter <- 1
+
+# You can also start where you left it off
+start_url <- "/Inquiry/CorporationSearch/SearchResults?InquiryType=EntityName&inquiryDirectionType=ForwardList&searchNameOrder=10140SPRINGTREE%20L070000342620&SearchTerm=0&entityId=L07000034262&listNameOrder=1013REALESTATEINVESTMENTS%20L060000375230"
+start_counter <- 132
 
 
 # Main function call
 # Note: This will created a series of .rds files in the output folder
 scrape_listing_recurrent(start_url, 
-                         max_pages = 1,
-                         output_folder = output_folder)
+                         output_folder = output_folder,
+                         start_counter = start_counter)
 
 # This will read all the .RDS files and append them in one dataframe
 files <- list.files(output_folder, pattern = ".rds")
