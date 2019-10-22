@@ -5,6 +5,7 @@ library(dplyr)
 library(tibble)
 library(glue)
 library(readr)
+library(tidyr)
 
 root <- "http://search.sunbiz.org"
 
@@ -17,11 +18,46 @@ session <- html_session(root)
 #' @param url The start URL
 #' @param verbose Should we print where we are as the scraping happens ?
 #' @param max_pages The maximum number of pages to scrape
-scrape_listing_recurrent <- function(url, 
+#' @param start_from_scratch set to FALSE to start from the last url scraped.
+#' If no url was scraped before, will fall back to provided url parameter.
+scrape_listing_recurrent <- function(url = NULL, 
                                      verbose = TRUE, 
                                      max_pages = Inf, 
                                      output_folder = '.',
-                                     start_counter = 1){
+                                     start_from_scratch = FALSE){
+  
+  if(start_from_scratch){
+    
+    if(is.null(url)){
+      stop("In order to start from scratch, please provide the url parameter.")
+    }
+    
+    start_counter <- 1
+    
+  }else{
+    
+    if(file.exists(glue("{output_folder}\\last_url_scraped.txt"))){
+      
+      url <- readLines(glue("{output_folder}\\last_url_scraped.txt"))
+      
+    }else{
+      
+      if(is.null(url)){
+        stop("start_from_scratch is FALSE, 
+              but file last_url_scraped.txt could not be found in the output folder,
+              and no url was provided.")
+      }
+    }
+    
+    files <- list.files(output_folder, pattern = ".rds", full.names = TRUE)
+    
+    if(length(files) == 0){
+      start_counter <- 1
+    }else{
+      start_counter <- length(files)
+    }
+    
+  }
   
   keep_going <- TRUE
   
@@ -39,8 +75,9 @@ scrape_listing_recurrent <- function(url,
     res <- scrape_listing(html, verbose)
     res <- add_column(res, page = i, .before = 1)
     
-    saveRDS(res, glue("{output_folder}/res_{str_pad(i, 6, pad='0')}.rds"))
-    #write_csv(res, glue("{output_folder}/res_{str_pad(i, 6, pad='0')}.csv"))
+    saveRDS(res, glue("{output_folder}/res_{str_pad(i, 8, pad='0')}.rds"))
+    
+    writeLines(url, glue("{output_folder}\\last_url_scraped.txt"))
     
     keep_going <- 
       tryCatch({
@@ -53,8 +90,9 @@ scrape_listing_recurrent <- function(url,
         
         next_page_link <- 
           navigation_links %>% 
-          keep(~ identical(html_attr(., "title"), "Next List")) %>% 
-          pluck(1)
+          purrr::keep(~ identical(html_attr(., "title"), "Next List"))
+          
+        next_page_link <- next_page_link[[1]]
         
         url <-
           next_page_link %>% 
@@ -62,7 +100,7 @@ scrape_listing_recurrent <- function(url,
         
         i <- i + 1
         
-        (i <= max_pages)
+        (i  - start_counter < max_pages)
       },
       error = function(e){
         FALSE
@@ -179,7 +217,7 @@ scrape_company <- function(url, name, id){
 
     }
     
-    l[[length(l) + 1]] <- data_frame(category=category, label=label, value=value)
+    l[[length(l) + 1]] <- tibble(category=category, label=label, value=value)
     
     if(str_detect(category, "Officer/Director")){
       # we stop after this section
@@ -191,29 +229,52 @@ scrape_company <- function(url, name, id){
   res <- bind_rows(l)
   res <- add_column(res, name = name, .before=1)
   res <- add_column(res, id = id, .before=1)
-  res
+  
+  # (KL) UPDATE 2019-10-22: Change from long to wide format, at request of client
+  res$category <- ifelse(res$category %in% c("Company name", 
+                                           "Filing information", 
+                                           "Mailing Address", 
+                                           "Principal Address"),
+                        res$category,
+                        "Person(s) Detail")
+  
+  res$key <- ifelse(map_lgl(res$label, ~ str_length(.) > 0),
+                   paste(res$category, res$label, sep = " - "), 
+                   res$category)
+  
+  res_summ <- 
+    res %>% 
+    group_by(
+      id,
+      name,
+      key
+    ) %>% 
+    summarise(
+      value2 = paste(value, collapse = " - ")
+    )
+  
+  res_wide <- 
+    spread(res_summ, key, value2)
+  
+  
+  res_wide
 }
 
 # CHANGE THIS
 output_folder <- "C:\\Users\\HP\\Documents\\scrape_sunbiz"
 
 # If you are starting from scratch, use this start_url and start_counter
-# start_url <- "/Inquiry/CorporationSearch/SearchResults?inquiryType=EntityName&searchNameOrder=A&searchTerm=0"
-# start_counter <- 1
-
-# You can also start where you left it off
-start_url <- "/Inquiry/CorporationSearch/SearchResults?InquiryType=EntityName&inquiryDirectionType=ForwardList&searchNameOrder=10140SPRINGTREE%20L070000342620&SearchTerm=0&entityId=L07000034262&listNameOrder=1013REALESTATEINVESTMENTS%20L060000375230"
-start_counter <- 132
-
+start_url <- "/Inquiry/CorporationSearch/SearchResults?inquiryType=EntityName&searchNameOrder=A&searchTerm=0"
 
 # Main function call
 # Note: This will created a series of .rds files in the output folder
 scrape_listing_recurrent(start_url, 
                          output_folder = output_folder,
-                         start_counter = start_counter)
+                         max_pages = 4,
+                         start_from_scratch = FALSE)
 
 # This will read all the .RDS files and append them in one dataframe
-files <- list.files(output_folder, pattern = ".rds")
+files <- list.files(output_folder, pattern = ".rds", full.names = TRUE)
 
 data <- 
   files %>% 
